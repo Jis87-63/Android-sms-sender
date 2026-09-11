@@ -1,0 +1,10 @@
+{
+  "name": "sms-sender-pro",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Envio pessoal de SMS via Termux:API e SIM Android.",
+  "type": "module",
+  "scripts": {"start":"node src/index.js","menu":"node src/index.js","doctor":"node src/doctor.js","sync":"node src/sync.js","test":"node --test"},
+  "engines":{"node":">=18"},
+  "dependencies":{"xlsx":"^0.18.5"}
+}
