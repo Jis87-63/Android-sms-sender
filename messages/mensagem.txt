@@ -1,0 +1,1 @@
+Olá {nome}, temos uma novidade para si. Contacto: {numero}.
