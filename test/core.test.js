@@ -1,0 +1,29 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import os from 'node:os';import path from 'node:path';import {normalizeNumber,parseContactFile,buildRecipients} from '../src/contacts/index.js';import {renderMessage} from '../src/messages/index.js';import {createReport,recordReport} from '../src/reports/index.js';import {loadConfig} from '../src/config/index.js';
+test('normaliza números e rejeita formatos inseguros',()=>{assert.equal(normalizeNumber('841234567'),' +258841234567'.trim());assert.equal(normalizeNumber('+258841234567'),'+258841234567');assert.equal(normalizeNumber('abc'),null);});
+test('lê TXT e CSV e deduplica',async()=>{const d=await fs.mkdtemp(path.join(os.tmpdir(),'sms-'));const txt=path.join(d,'a.txt'),csv=path.join(d,'b.csv');await fs.writeFile(txt,'841234567\n258841234567\ninvalido\n');await fs.writeFile(csv,'nome,telefone\nAna,821234567\n');assert.equal((await parseContactFile(txt)).length,3);assert.deepEqual(await parseContactFile(csv),[{name:'Ana',number:'821234567'}]);const r=await buildRecipients([txt,csv],{defaultCountryCode:'258'},new Set(['+258821234567']));assert.equal(r.recipients.length,1);assert.equal(r.duplicate.length,1);assert.equal(r.invalid.length,1);});
+test('substitui variáveis com fallback seguro',()=>{const s=renderMessage('Olá {nome} {numero} {indice}/{total} {data} {hora}',{number:'+258841234567',name:''},{index:1,total:2,now:new Date('2026-09-11T23:40:15Z')});assert.match(s,/Olá \+258841234567 \+258841234567 1\/2 2026-09-11/);});
+test('gera relatório CSV e JSON',async()=>{const d=await fs.mkdtemp(path.join(os.tmpdir(),'reports-'));const ctx=await createReport(d,{dryRun:true});await recordReport(ctx,{number:'+258841234567',name:'Ana',status:'success',date:'2026-09-11',time:'10:00:00',message:'Oi',error:'',index:1});assert.match(await fs.readFile(path.join(ctx.dir,'success.csv'),'utf8'),/Ana/);assert.match(await fs.readFile(path.join(ctx.dir,'report.json'),'utf8'),/dryRun/);});
+test('lê configuração de exemplo',async()=>assert.equal((await loadConfig()).delayMs,1000));
+test('lê XLSX quando a dependência está instalada',async t=>{try{await import('xlsx')}catch{t.skip('xlsx não instalada neste ambiente; npm install instala o parser Excel.');return;}const d=await fs.mkdtemp(path.join(os.tmpdir(),'xlsx-'));const XLSX=await import('xlsx');const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.json_to_sheet([{nome:'Ana',numero:'841234567'}]),'Contactos');const f=path.join(d,'a.xlsx');XLSX.writeFile(book,f);assert.equal((await parseContactFile(f))[0].name,'Ana');});
+
+test('não bloqueia a campanha quando termux-sms-send excede o tempo limite', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'sms-timeout-'));
+  const command = path.join(directory, 'termux-sms-send');
+  await fs.writeFile(command, '#!/bin/sh\nsleep 2\n');
+  await fs.chmod(command, 0o755);
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${directory}:${originalPath}`;
+  try {
+    const { sendSms } = await import('../src/sms/index.js');
+    await assert.rejects(sendSms('+258841234567', 'Teste', { timeoutMs: 25 }), /Tempo limite/);
+  } finally {
+    process.env.PATH = originalPath;
+  }
+});
+
+test('deteta todos os formatos de listas suportados, incluindo SLSX', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'contact-formats-'));
+  for (const filename of ['a.txt', 'a.csv', 'a.xlsx', 'a.xls', 'a.xlsm', 'a.xlsb', 'a.ods', 'a.slsx', 'ignore.pdf']) await fs.writeFile(path.join(directory, filename), '');
+  const { listContactFiles } = await import('../src/contacts/index.js');
+  assert.deepEqual(await listContactFiles(directory), ['a.csv', 'a.ods', 'a.slsx', 'a.txt', 'a.xls', 'a.xlsb', 'a.xlsm', 'a.xlsx']);
+});

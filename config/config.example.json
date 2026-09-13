@@ -1,0 +1,8 @@
+{
+  "defaultCountryCode": "258",
+  "delayMs": 1000,
+  "maxRetries": 0,
+  "showProgress": true,
+  "saveReports": true,
+  "smsTimeoutMs": 30000
+}
